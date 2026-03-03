@@ -11,10 +11,16 @@ export interface HAState {
 
 
 export class HAClient {
+  private readonly baseUrl: string
+
   constructor(
-    private readonly baseUrl: string,
+    baseUrl: string,
     private readonly token: string,
-  ) {}
+  ) {
+    // Strip trailing slashes — a double-slash URL (e.g. https://host//api/...)
+    // is silently redirected on GET but often rejected with 400 on POST by proxies.
+    this.baseUrl = baseUrl.replace(/\/+$/, '')
+  }
 
   private headers(): HeadersInit {
     return {
@@ -67,13 +73,19 @@ export class HAClient {
     serviceData: Record<string, unknown>,
   ): Promise<HAState[]> {
     const url = `${this.baseUrl}/api/services/${domain}/${service}`
+    const body = JSON.stringify(serviceData)
     const res = await fetch(url, {
       method: 'POST',
       headers: this.headers(),
-      body: JSON.stringify(serviceData),
+      body,
     })
     if (!res.ok) {
-      throw new Error(`HA API error ${res.status}: ${await res.text()}`)
+      const text = await res.text()
+      throw new Error(
+        `HA API error ${res.status} calling ${domain}.${service}: ${text}\n` +
+        `Request URL: ${url}\n` +
+        `Request body: ${body}`,
+      )
     }
     return res.json() as Promise<HAState[]>
   }
