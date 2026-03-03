@@ -50,17 +50,20 @@ export function makeCallServiceTool(
       },
       required: ['domain', 'service', 'entity_id'],
     },
-    async execute({
-      domain,
-      service,
-      entity_id,
-      service_data = {},
-    }: {
-      domain: string
-      service: string
-      entity_id: string
-      service_data?: Record<string, unknown>
-    }): Promise<unknown> {
+    async execute(
+      _ctx: unknown,
+      {
+        domain,
+        service,
+        entity_id,
+        service_data = {},
+      }: {
+        domain: string
+        service: string
+        entity_id: string
+        service_data?: Record<string, unknown>
+      },
+    ): Promise<unknown> {
       const registry = getRegistry()
       await registry.ensureLoaded()
 

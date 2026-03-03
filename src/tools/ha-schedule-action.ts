@@ -47,21 +47,24 @@ export function makeScheduleActionTool(
       },
       required: ['when', 'domain', 'service', 'entity_id'],
     },
-    async execute({
-      when,
-      domain,
-      service,
-      entity_id,
-      service_data,
-      label,
-    }: {
-      when: string
-      domain: string
-      service: string
-      entity_id: string
-      service_data?: Record<string, unknown>
-      label?: string
-    }): Promise<unknown> {
+    async execute(
+      _ctx: unknown,
+      {
+        when,
+        domain,
+        service,
+        entity_id,
+        service_data,
+        label,
+        }: {
+        when: string
+        domain: string
+        service: string
+        entity_id: string
+        service_data?: Record<string, unknown>
+        label?: string
+      },
+    ): Promise<unknown> {
       const registry = getRegistry()
       await registry.ensureLoaded()
 

@@ -22,7 +22,7 @@ export function makeListEntitiesTool(
       },
       required: [],
     },
-    async execute({ domain }: { domain?: string }): Promise<unknown> {
+    async execute(_ctx: unknown, { domain }: { domain?: string }): Promise<unknown> {
       const registry = getRegistry()
       await registry.ensureLoaded()
 
