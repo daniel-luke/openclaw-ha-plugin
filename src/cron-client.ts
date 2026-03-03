@@ -45,9 +45,15 @@ export async function addCronJob(
   const wsUrl = `ws://127.0.0.1:${gatewayPort}`
 
   return new Promise((resolve, reject) => {
-    const ws = new WS(wsUrl)
+    // Pass the token in the HTTP upgrade headers — the gateway authenticates
+    // at the WebSocket handshake level, not via a post-connect message.
+    const ws = new WS(wsUrl, {
+      headers: {
+        Authorization: `Bearer ${gatewayToken}`,
+      },
+    })
     const reqId = randomUUID()
-    let handshakeDone = false
+    let requestSent = false
 
     const timeout = setTimeout(() => {
       ws.close()
@@ -55,8 +61,16 @@ export async function addCronJob(
     }, 10000)
 
     ws.on('open', () => {
-      // Step 1: send connect/auth handshake
-      ws.send(JSON.stringify({ type: 'connect', token: gatewayToken }))
+      // Connection accepted — send the RPC request immediately
+      requestSent = true
+      ws.send(
+        JSON.stringify({
+          type: 'req',
+          id: reqId,
+          method: 'cron.add',
+          params: job,
+        }),
+      )
     })
 
     ws.on('message', (raw: WS.RawData) => {
@@ -64,25 +78,9 @@ export async function addCronJob(
       try {
         msg = JSON.parse(raw.toString()) as Record<string, unknown>
       } catch {
-        return // ignore unparseable frames
-      }
-
-      if (!handshakeDone) {
-        // Any message back after the connect handshake means we're authenticated.
-        // If the gateway rejects the token it will close the connection instead.
-        handshakeDone = true
-        ws.send(
-          JSON.stringify({
-            type: 'req',
-            id: reqId,
-            method: 'cron.add',
-            params: job,
-          }),
-        )
         return
       }
 
-      // Wait for the response matching our request id
       if (msg.id === reqId) {
         clearTimeout(timeout)
         ws.close()
@@ -100,11 +98,11 @@ export async function addCronJob(
     })
 
     ws.on('close', (code, reason) => {
-      if (!handshakeDone) {
+      if (!requestSent) {
         clearTimeout(timeout)
         reject(
           new Error(
-            `Gateway closed connection before handshake (code ${code}: ${reason}). ` +
+            `Gateway rejected WebSocket connection (code ${code}: ${reason.toString()}). ` +
             'Check that OPENCLAW_GATEWAY_TOKEN is correct.',
           ),
         )
