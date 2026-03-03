@@ -9,17 +9,6 @@ export interface HAState {
   last_updated: string
 }
 
-export interface HAArea {
-  area_id: string
-  name: string
-}
-
-export interface HAEntityRegistryEntry {
-  entity_id: string
-  area_id: string | null
-  name: string | null          // user-defined override name
-  original_name: string | null // name from the integration
-}
 
 export class HAClient {
   constructor(
@@ -46,20 +35,30 @@ export class HAClient {
     return entityId ? [data as HAState] : (data as HAState[])
   }
 
-  async getAreas(): Promise<HAArea[]> {
-    const res = await fetch(`${this.baseUrl}/api/config/area_registry/list`, {
-      headers: this.headers(),
-    })
-    if (!res.ok) return []
-    return res.json() as Promise<HAArea[]>
-  }
+  /**
+   * Returns a map of entity_id → area name using HA's template engine.
+   * The area/entity registry is only available via WebSocket, but templates
+   * expose the same data through areas(), area_entities(), and area_name().
+   */
+  async getEntityAreaMap(): Promise<Map<string, string>> {
+    const template = `
+{%- set pairs = namespace(items=[]) -%}
+{%- for area_id in areas() -%}
+  {%- for entity_id in area_entities(area_id) -%}
+    {%- set pairs.items = pairs.items + [{"e": entity_id, "a": area_name(area_id)}] -%}
+  {%- endfor -%}
+{%- endfor -%}
+{{ pairs.items | tojson }}`
 
-  async getEntityRegistry(): Promise<HAEntityRegistryEntry[]> {
-    const res = await fetch(`${this.baseUrl}/api/config/entity_registry/list`, {
-      headers: this.headers(),
-    })
-    if (!res.ok) return []
-    return res.json() as Promise<HAEntityRegistryEntry[]>
+    const result = await this.renderTemplate(template.trim())
+    if (!result) return new Map()
+
+    try {
+      const pairs = JSON.parse(result) as Array<{ e: string; a: string }>
+      return new Map(pairs.map(({ e, a }) => [e, a]))
+    } catch {
+      return new Map()
+    }
   }
 
   async callService(

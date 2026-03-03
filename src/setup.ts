@@ -50,30 +50,14 @@ export async function runSetup(haClient: HAClient, haDir: string): Promise<void>
     process.exit(1)
   }
 
-  // Fetch area and entity registry to get room assignments
-  const [areas, entityRegistry] = await Promise.all([
-    haClient.getAreas(),
-    haClient.getEntityRegistry(),
-  ])
-
-  const areaById = new Map(areas.map((a) => [a.area_id, a.name]))
-  const roomByEntityId = new Map(
-    entityRegistry
-      .filter((e) => e.area_id)
-      .map((e) => [e.entity_id, areaById.get(e.area_id!) ?? null]),
-  )
-  // Also pick up user-defined names from the entity registry
-  const registryNameByEntityId = new Map(
-    entityRegistry
-      .filter((e) => e.name || e.original_name)
-      .map((e) => [e.entity_id, e.name ?? e.original_name]),
-  )
+  // Fetch area assignments via the template engine (areas() / area_name() template functions)
+  const roomByEntityId = await haClient.getEntityAreaMap()
 
   const hasRoomData = roomByEntityId.size > 0
   console.log(
     hasRoomData
-      ? `Found ${areas.length} area(s) — grouping by room.`
-      : 'No area data found — grouping by entity type.',
+      ? `Found area data for ${roomByEntityId.size} entity/entities — grouping by room.`
+      : 'No area data found — grouping by entity type. Tip: assign rooms in Home Assistant (Settings → Areas) and re-run openclaw ha:init.',
   )
 
   // Build device list, skipping system domains
@@ -81,10 +65,7 @@ export async function runSetup(haClient: HAClient, haDir: string): Promise<void>
     .filter((s) => !SKIPPED_DOMAINS.has(s.entity_id.split('.')[0]))
     .map((s) => ({
       entity_id: s.entity_id,
-      name:
-        registryNameByEntityId.get(s.entity_id) ??
-        (s.attributes.friendly_name as string | undefined) ??
-        s.entity_id,
+      name: (s.attributes.friendly_name as string | undefined) ?? s.entity_id,
       room: roomByEntityId.get(s.entity_id) ?? null,
     }))
     .sort((a, b) => a.entity_id.localeCompare(b.entity_id))
@@ -177,9 +158,6 @@ export async function runSetup(haClient: HAClient, haDir: string): Promise<void>
   console.log('')
   if (filesCreated > 0) {
     console.log(`Done. Created ${filesCreated} file(s) in ${haDir}`)
-    if (!hasRoomData) {
-      console.log("Tip: assign rooms in Home Assistant (Settings → Areas) and re-run 'openclaw ha:init' to regenerate room-based files.")
-    }
   } else {
     console.log(`No new files created. ${filesSkipped} file(s) already existed.`)
   }
