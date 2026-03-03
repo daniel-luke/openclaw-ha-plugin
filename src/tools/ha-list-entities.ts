@@ -1,7 +1,10 @@
 import type { HAClient } from '../ha-client.js'
 import type { DeviceRegistry } from '../device-registry.js'
 
-export function makeListEntitiesTool(haClient: HAClient, registry: DeviceRegistry) {
+export function makeListEntitiesTool(
+  getClient: () => HAClient,
+  getRegistry: () => DeviceRegistry,
+) {
   return {
     name: 'ha_list_entities',
     description:
@@ -20,6 +23,7 @@ export function makeListEntitiesTool(haClient: HAClient, registry: DeviceRegistr
       required: [],
     },
     async handler({ domain }: { domain?: string }): Promise<unknown> {
+      const registry = getRegistry()
       await registry.ensureLoaded()
 
       const devices = registry.getEnabledDevices()
@@ -27,10 +31,11 @@ export function makeListEntitiesTool(haClient: HAClient, registry: DeviceRegistr
         ? devices.filter((d) => d.entity_id.startsWith(`${domain}.`))
         : devices
 
+      const client = getClient()
       const results = []
       for (const device of filtered) {
         try {
-          const [state] = await haClient.getStates(device.entity_id)
+          const [state] = await client.getStates(device.entity_id)
           results.push({
             entity_id: device.entity_id,
             name: device.name,

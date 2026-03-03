@@ -9,9 +9,9 @@ export interface CallServiceConfig {
 export type SendToChannel = (channelId: string, message: string) => Promise<void>
 
 export function makeCallServiceTool(
-  haClient: HAClient,
-  registry: DeviceRegistry,
-  config: CallServiceConfig,
+  getClient: () => HAClient,
+  getRegistry: () => DeviceRegistry,
+  getConfig: () => CallServiceConfig,
   sendToChannel: SendToChannel,
 ) {
   return {
@@ -61,6 +61,7 @@ export function makeCallServiceTool(
       entity_id: string
       service_data?: Record<string, unknown>
     }): Promise<unknown> {
+      const registry = getRegistry()
       await registry.ensureLoaded()
 
       if (!registry.isEnabled(entity_id)) {
@@ -69,11 +70,12 @@ export function makeCallServiceTool(
         }
       }
 
-      const affectedStates = await haClient.callService(domain, service, {
+      const affectedStates = await getClient().callService(domain, service, {
         entity_id,
         ...service_data,
       })
 
+      const config = getConfig()
       const deviceName = registry.getDevice(entity_id)?.name ?? entity_id
       const serviceLabel = `${domain}.${service}`
       const summary = `Called ${serviceLabel} on "${deviceName}".`

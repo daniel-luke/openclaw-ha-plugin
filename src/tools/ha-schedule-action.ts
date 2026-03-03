@@ -5,8 +5,8 @@ export interface ScheduleActionConfig {
 }
 
 export function makeScheduleActionTool(
-  registry: DeviceRegistry,
-  config: ScheduleActionConfig,
+  getRegistry: () => DeviceRegistry,
+  getConfig: () => ScheduleActionConfig,
 ) {
   return {
     name: 'ha_schedule_action',
@@ -62,6 +62,7 @@ export function makeScheduleActionTool(
       service_data?: Record<string, unknown>
       label?: string
     }): Promise<unknown> {
+      const registry = getRegistry()
       await registry.ensureLoaded()
 
       if (!registry.isEnabled(entity_id)) {
@@ -70,19 +71,18 @@ export function makeScheduleActionTool(
         }
       }
 
+      const config = getConfig()
       const deviceName = registry.getDevice(entity_id)?.name ?? entity_id
       const serviceDataStr = service_data ? `, service_data=${JSON.stringify(service_data)}` : ''
       const jobLabel = label ?? `${domain}.${service} on ${deviceName}`
 
-      // Build the prompt the cron agent will execute when the job fires
       const agentPrompt =
         `Execute scheduled Home Assistant action: ` +
         `call ha_call_service with domain="${domain}", service="${service}", entity_id="${entity_id}"${serviceDataStr}. ` +
         `This is scheduled job "${jobLabel}". After executing, confirm success to the user.`
 
       return {
-        message:
-          `Action validated. Now call cron.add with the parameters below to schedule "${jobLabel}".`,
+        message: `Action validated. Now call cron.add with the parameters below to schedule "${jobLabel}".`,
         cron_add_params: {
           prompt: agentPrompt,
           schedule: { kind: 'at', at: when },

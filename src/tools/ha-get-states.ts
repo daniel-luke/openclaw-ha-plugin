@@ -1,7 +1,10 @@
 import type { HAClient } from '../ha-client.js'
 import type { DeviceRegistry } from '../device-registry.js'
 
-export function makeGetStatesTool(haClient: HAClient, registry: DeviceRegistry) {
+export function makeGetStatesTool(
+  getClient: () => HAClient,
+  getRegistry: () => DeviceRegistry,
+) {
   return {
     name: 'ha_get_states',
     description:
@@ -20,9 +23,10 @@ export function makeGetStatesTool(haClient: HAClient, registry: DeviceRegistry) 
       required: [],
     },
     async handler({ entity_id }: { entity_id?: string }): Promise<unknown> {
+      const registry = getRegistry()
       await registry.ensureLoaded()
 
-      const states = await haClient.getStates(entity_id)
+      const states = await getClient().getStates(entity_id)
 
       return states.map((s) => {
         const registered = registry.getDevice(s.entity_id)
