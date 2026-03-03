@@ -1,7 +1,10 @@
 import type { DeviceRegistry } from '../device-registry.js'
+import { addCronJob } from '../cron-client.js'
 
 export interface ScheduleActionConfig {
   reportingChannel?: string
+  gatewayUrl?: string
+  gatewayToken?: string
 }
 
 export function makeScheduleActionTool(
@@ -11,18 +14,17 @@ export function makeScheduleActionTool(
   return {
     name: 'ha_schedule_action',
     description:
-      'Prepare a Home Assistant action for scheduling. ' +
-      'Returns the parameters you must pass to cron.add to schedule the action. ' +
-      'Always follow this tool call immediately with a cron.add call using the returned parameters.',
+      'Schedule a Home Assistant device action to run at a specific time in the future. ' +
+      'The action is registered as a cron job directly — no follow-up action is needed from you. ' +
+      'Always convert natural language times to ISO 8601 before calling this tool (e.g. "tonight at 11pm" → "2025-06-01T23:00:00").',
     parameters: {
       type: 'object' as const,
       properties: {
         when: {
           type: 'string',
           description:
-            'When to execute the action. Use ISO 8601 datetime (e.g. "2025-06-01T22:00:00") ' +
-            'or a human duration from now (e.g. "in 30 minutes", "in 2 hours"). ' +
-            'The value will be passed as-is to cron.add.',
+            'ISO 8601 datetime for when to run the action, e.g. "2025-06-01T23:00:00". ' +
+            'Convert natural language ("tonight at 11", "in 2 hours") to ISO 8601 before calling.',
         },
         domain: {
           type: 'string',
@@ -42,7 +44,7 @@ export function makeScheduleActionTool(
         },
         label: {
           type: 'string',
-          description: 'Human-readable label for the scheduled job, e.g. "Turn off living room lights at night".',
+          description: 'Human-readable label for the job, e.g. "Turn off garden lights at night".',
         },
       },
       required: ['when', 'domain', 'service', 'entity_id'],
@@ -56,7 +58,7 @@ export function makeScheduleActionTool(
         entity_id,
         service_data,
         label,
-        }: {
+      }: {
         when: string
         domain: string
         service: string
@@ -77,21 +79,39 @@ export function makeScheduleActionTool(
       const config = getConfig()
       const deviceName = registry.getDevice(entity_id)?.name ?? entity_id
       const serviceDataStr = service_data ? `, service_data=${JSON.stringify(service_data)}` : ''
-      const jobLabel = label ?? `${domain}.${service} on ${deviceName}`
+      const jobLabel = label ?? `${domain}.${service} on ${deviceName} at ${when}`
+
+      // Resolve gateway credentials — prefer plugin config, fall back to env vars
+      const gatewayUrl =
+        config.gatewayUrl ??
+        `http://127.0.0.1:${process.env.OPENCLAW_GATEWAY_PORT ?? '18789'}`
+      const gatewayToken =
+        config.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? ''
+
+      if (!gatewayToken) {
+        return {
+          error:
+            'No gateway token available. Set OPENCLAW_GATEWAY_TOKEN in the environment ' +
+            'or add gatewayToken to the plugin configuration.',
+        }
+      }
 
       const agentPrompt =
         `Execute scheduled Home Assistant action: ` +
         `call ha_call_service with domain="${domain}", service="${service}", entity_id="${entity_id}"${serviceDataStr}. ` +
-        `This is scheduled job "${jobLabel}". After executing, confirm success to the user.`
+        `This is scheduled job "${jobLabel}".`
+
+      const result = await addCronJob(gatewayUrl, gatewayToken, {
+        prompt: agentPrompt,
+        schedule: { kind: 'at', at: when },
+        label: jobLabel,
+        ...(config.reportingChannel ? { channel: config.reportingChannel } : {}),
+      })
 
       return {
-        message: `Action validated. Now call cron.add with the parameters below to schedule "${jobLabel}".`,
-        cron_add_params: {
-          prompt: agentPrompt,
-          schedule: { kind: 'at', at: when },
-          label: jobLabel,
-          ...(config.reportingChannel ? { channel: config.reportingChannel } : {}),
-        },
+        success: true,
+        message: `Scheduled: "${jobLabel}" will run at ${when}.`,
+        job_id: result.id,
       }
     },
   }

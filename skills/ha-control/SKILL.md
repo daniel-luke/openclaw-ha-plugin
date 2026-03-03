@@ -41,11 +41,10 @@ After every successful action, confirm to the user what you did in natural langu
 
 When a user asks to do something at a specific time or after a delay:
 
-1. Call `ha_schedule_action` with `when`, `domain`, `service`, `entity_id`, and an optional descriptive `label`.
-2. Immediately follow with a `cron.add` call using the `cron_add_params` returned by the tool.
-3. Confirm the scheduled action to the user: "Scheduled — I'll turn off the garden lights at 23:00 tonight."
-
-For `when`, use ISO 8601 format for specific times (`2025-06-01T23:00:00`) or a human duration for relative times (`in 30 minutes`).
+1. Convert the time to ISO 8601 format yourself before calling the tool (e.g. "tonight at 11" → `2025-06-01T23:00:00`).
+2. Call `ha_schedule_action` with `when` (ISO 8601), `domain`, `service`, `entity_id`, and an optional descriptive `label`.
+3. The tool registers the cron job directly — **do not call `cron.add` afterwards**.
+4. Confirm to the user: "Scheduled — I'll turn off the garden lights at 23:00 tonight."
 
 ## Multiple Devices
 
