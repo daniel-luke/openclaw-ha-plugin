@@ -1,6 +1,6 @@
 {
   "name": "openclaw-ha-plugin",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Home Assistant integration for OpenClaw — control devices, schedule actions, and get notified",
   "openclaw": {
     "extensions": ["./src/index.ts"],
