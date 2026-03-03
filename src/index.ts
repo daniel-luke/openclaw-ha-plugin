@@ -13,7 +13,6 @@ interface PluginConfig {
   reportingChannel?: string
   reportingEnabled?: boolean
   workspaceHaDir?: string
-  gatewayToken?: string
 }
 
 // Shared state populated during service start, after api.config is available.

@@ -3,8 +3,6 @@ import { addCronJob } from '../cron-client.js'
 
 export interface ScheduleActionConfig {
   reportingChannel?: string
-  gatewayUrl?: string
-  gatewayToken?: string
 }
 
 export function makeScheduleActionTool(
@@ -81,32 +79,16 @@ export function makeScheduleActionTool(
       const serviceDataStr = service_data ? `, service_data=${JSON.stringify(service_data)}` : ''
       const jobLabel = label ?? `${domain}.${service} on ${deviceName} at ${when}`
 
-      // Resolve gateway credentials — prefer plugin config, fall back to env vars
-      const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT ?? '18789'
-      const gatewayToken =
-        config.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? ''
-
-      if (!gatewayToken) {
-        return {
-          error:
-            'No gateway token available. Set OPENCLAW_GATEWAY_TOKEN in the environment ' +
-            'or add gatewayToken to the plugin configuration.',
-        }
-      }
-
       const agentMessage =
         `Execute scheduled Home Assistant action: ` +
         `call ha_call_service with domain="${domain}", service="${service}", entity_id="${entity_id}"${serviceDataStr}.`
 
-      const result = await addCronJob(gatewayPort, gatewayToken, {
+      const result = await addCronJob({
         name: jobLabel,
-        schedule: { kind: 'at', at: when },
-        sessionTarget: 'isolated',
-        payload: { kind: 'agentTurn', message: agentMessage },
+        at: when,
+        message: agentMessage,
         deleteAfterRun: true,
-        ...(config.reportingChannel
-          ? { delivery: { mode: 'announce', channel: config.reportingChannel } }
-          : {}),
+        ...(config.reportingChannel ? { announceChannel: config.reportingChannel } : {}),
       })
 
       return {
