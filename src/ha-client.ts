@@ -72,22 +72,40 @@ export class HAClient {
     service: string,
     serviceData: Record<string, unknown>,
   ): Promise<HAState[]> {
-    const url = `${this.baseUrl}/api/services/${domain}/${service}`
     const body = JSON.stringify(serviceData)
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(),
-      body,
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(
-        `HA API error ${res.status} calling ${domain}.${service}: ${text}\n` +
-        `Request URL: ${url}\n` +
-        `Request body: ${body}`,
-      )
+
+    // Follow redirects manually: the fetch spec downgrades POST→GET on 301/302,
+    // which breaks HA instances behind a reverse proxy that redirects (e.g. adds
+    // trailing slash or enforces HTTPS). We preserve the POST through all redirects.
+    let url = `${this.baseUrl}/api/services/${domain}/${service}`
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this.headers(),
+        body,
+        redirect: 'manual',
+      })
+
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location')
+        if (!location) break
+        url = new URL(location, url).href
+        continue
+      }
+
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(
+          `HA API error ${res.status} calling ${domain}.${service}: ${text}\n` +
+          `Request URL: ${url}\n` +
+          `Request body: ${body}`,
+        )
+      }
+
+      return res.json() as Promise<HAState[]>
     }
-    return res.json() as Promise<HAState[]>
+
+    throw new Error(`Too many redirects calling ${domain}.${service} (last URL: ${url})`)
   }
 
   async renderTemplate(template: string): Promise<string> {
