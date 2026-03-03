@@ -1,5 +1,5 @@
 {
-  "id": "ha",
+  "id": "openclaw-ha-plugin",
   "name": "Home Assistant",
   "description": "Control Home Assistant devices, schedule future actions, and receive notifications via a configurable channel.",
   "version": "0.1.0",
