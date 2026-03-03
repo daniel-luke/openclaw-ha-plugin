@@ -50,7 +50,7 @@ export function makeCallServiceTool(
       },
       required: ['domain', 'service', 'entity_id'],
     },
-    async handler({
+    async execute({
       domain,
       service,
       entity_id,

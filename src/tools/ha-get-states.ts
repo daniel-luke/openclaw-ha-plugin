@@ -22,7 +22,7 @@ export function makeGetStatesTool(
       },
       required: [],
     },
-    async handler({ entity_id }: { entity_id?: string }): Promise<unknown> {
+    async execute({ entity_id }: { entity_id?: string }): Promise<unknown> {
       const registry = getRegistry()
       await registry.ensureLoaded()
 

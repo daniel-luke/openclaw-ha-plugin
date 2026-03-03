@@ -47,7 +47,7 @@ export function makeScheduleActionTool(
       },
       required: ['when', 'domain', 'service', 'entity_id'],
     },
-    async handler({
+    async execute({
       when,
       domain,
       service,
