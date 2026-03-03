@@ -61,16 +61,9 @@ export async function addCronJob(
     }, 10000)
 
     ws.on('open', () => {
-      // Connection accepted — send the RPC request immediately
-      requestSent = true
-      ws.send(
-        JSON.stringify({
-          type: 'req',
-          id: reqId,
-          method: 'cron.add',
-          params: job,
-        }),
-      )
+      // Step 1: protocol requires a connect frame as the very first message,
+      // even though the token was already validated via the Authorization header.
+      ws.send(JSON.stringify({ type: 'connect', token: gatewayToken }))
     })
 
     ws.on('message', (raw: WS.RawData) => {
@@ -78,6 +71,21 @@ export async function addCronJob(
       try {
         msg = JSON.parse(raw.toString()) as Record<string, unknown>
       } catch {
+        return
+      }
+
+      if (!requestSent) {
+        // Any message in response to our connect frame means the handshake
+        // is complete. Now send the actual cron.add request.
+        requestSent = true
+        ws.send(
+          JSON.stringify({
+            type: 'req',
+            id: reqId,
+            method: 'cron.add',
+            params: job,
+          }),
+        )
         return
       }
 
