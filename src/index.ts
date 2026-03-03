@@ -49,15 +49,22 @@ export default function register(api: any): void {
   api.registerService?.({
     id: 'ha-device-registry',
     async start() {
-      // Log the raw config shape to diagnose what OpenClaw actually passes
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = api.config as any
-      api.logger?.info('[ha-plugin] raw api.config: ' + JSON.stringify(raw))
 
-      // OpenClaw may pass the full entry object { enabled, config: {...} }
-      // or just the inner config { haUrl, haToken, ... } — handle both.
-      const config: PluginConfig = raw?.haUrl ? raw : (raw?.config ?? raw)
+      // Log available api keys and potential config locations to find the plugin config
+      api.logger?.info('[ha-plugin] api keys: ' + Object.keys(api).join(', '))
+      api.logger?.info('[ha-plugin] api.config keys: ' + (raw ? Object.keys(raw).join(', ') : 'null/undefined'))
+      api.logger?.info('[ha-plugin] api.pluginConfig: ' + JSON.stringify(api.pluginConfig))
+      api.logger?.info('[ha-plugin] plugins entry: ' + JSON.stringify(raw?.plugins?.entries?.['openclaw-ha-plugin']))
+
+      // Try known locations for the plugin config
+      const config: PluginConfig =
+        raw?.haUrl ? raw :
+        raw?.config?.haUrl ? raw.config :
+        raw?.plugins?.entries?.['openclaw-ha-plugin']?.config ?? {}
       state.config = config
+      api.logger?.info('[ha-plugin] resolved config: ' + JSON.stringify(config))
       state.haDir = resolveHaDir(config)
       state.haClient = new HAClient(config.haUrl, config.haToken)
       state.registry = new DeviceRegistry(state.haDir)
