@@ -1,3 +1,6 @@
+import * as http from 'node:http'
+import * as https from 'node:https'
+
 export interface HAState {
   entity_id: string
   state: string
@@ -9,7 +12,6 @@ export interface HAState {
   last_updated: string
 }
 
-
 export class HAClient {
   private readonly baseUrl: string
 
@@ -17,12 +19,11 @@ export class HAClient {
     baseUrl: string,
     private readonly token: string,
   ) {
-    // Strip trailing slashes — a double-slash URL (e.g. https://host//api/...)
-    // is silently redirected on GET but often rejected with 400 on POST by proxies.
+    // Strip trailing slashes to prevent double-slash URLs
     this.baseUrl = baseUrl.replace(/\/+$/, '')
   }
 
-  private headers(): HeadersInit {
+  private headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.token}`,
       'Content-Type': 'application/json',
@@ -67,41 +68,69 @@ export class HAClient {
     }
   }
 
+  /**
+   * POST using Node.js http/https module (HTTP/1.1) instead of fetch.
+   * Node.js native fetch uses HTTP/2 when the server supports it, but some
+   * HA reverse proxies reject HTTP/2 POST requests while accepting GET fine.
+   */
+  private postHttp1(path: string, body: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const url = new URL(path, this.baseUrl)
+      const isHttps = url.protocol === 'https:'
+      const bodyBuffer = Buffer.from(body, 'utf-8')
+
+      const options: http.RequestOptions = {
+        hostname: url.hostname,
+        port: url.port || (isHttps ? 443 : 80),
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          ...this.headers(),
+          'Content-Length': bodyBuffer.byteLength,
+        },
+      }
+
+      const req = (isHttps ? https : http).request(options, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf-8')
+          if (res.statusCode && res.statusCode >= 400) {
+            reject(
+              new Error(
+                `HA API error ${res.statusCode} at ${path}: ${text}\n` +
+                `Request URL: ${url.href}\n` +
+                `Request body: ${body}`,
+              ),
+            )
+          } else {
+            resolve(text)
+          }
+        })
+      })
+
+      req.on('error', reject)
+      req.write(bodyBuffer)
+      req.end()
+    })
+  }
+
   async callService(
     domain: string,
     service: string,
     serviceData: Record<string, unknown>,
   ): Promise<HAState[]> {
     const body = JSON.stringify(serviceData)
-
-    const url = `${this.baseUrl}/api/services/${domain}/${service}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(),
-      body,
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(
-        `HA API error ${res.status} calling ${domain}.${service}: ${text}\n` +
-        `Request URL: ${url}\n` +
-        `Request body: ${body}`,
-      )
-    }
-
-    return res.json() as Promise<HAState[]>
+    const text = await this.postHttp1(`/api/services/${domain}/${service}`, body)
+    return JSON.parse(text) as HAState[]
   }
 
   async renderTemplate(template: string): Promise<string> {
-    const url = `${this.baseUrl}/api/template`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ template }),
-    })
-    if (!res.ok) return ''
-    return res.text()
+    try {
+      return await this.postHttp1('/api/template', JSON.stringify({ template }))
+    } catch {
+      return ''
+    }
   }
 
   async ping(): Promise<boolean> {
