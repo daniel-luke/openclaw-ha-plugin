@@ -13,7 +13,6 @@ interface PluginConfig {
   reportingChannel?: string
   reportingEnabled?: boolean
   workspaceHaDir?: string
-  gatewayUrl?: string
   gatewayToken?: string
 }
 

@@ -82,9 +82,7 @@ export function makeScheduleActionTool(
       const jobLabel = label ?? `${domain}.${service} on ${deviceName} at ${when}`
 
       // Resolve gateway credentials — prefer plugin config, fall back to env vars
-      const gatewayUrl =
-        config.gatewayUrl ??
-        `http://127.0.0.1:${process.env.OPENCLAW_GATEWAY_PORT ?? '18789'}`
+      const gatewayPort = process.env.OPENCLAW_GATEWAY_PORT ?? '18789'
       const gatewayToken =
         config.gatewayToken ?? process.env.OPENCLAW_GATEWAY_TOKEN ?? ''
 
@@ -96,16 +94,19 @@ export function makeScheduleActionTool(
         }
       }
 
-      const agentPrompt =
+      const agentMessage =
         `Execute scheduled Home Assistant action: ` +
-        `call ha_call_service with domain="${domain}", service="${service}", entity_id="${entity_id}"${serviceDataStr}. ` +
-        `This is scheduled job "${jobLabel}".`
+        `call ha_call_service with domain="${domain}", service="${service}", entity_id="${entity_id}"${serviceDataStr}.`
 
-      const result = await addCronJob(gatewayUrl, gatewayToken, {
-        prompt: agentPrompt,
+      const result = await addCronJob(gatewayPort, gatewayToken, {
+        name: jobLabel,
         schedule: { kind: 'at', at: when },
-        label: jobLabel,
-        ...(config.reportingChannel ? { channel: config.reportingChannel } : {}),
+        sessionTarget: 'isolated',
+        payload: { kind: 'agentTurn', message: agentMessage },
+        deleteAfterRun: true,
+        ...(config.reportingChannel
+          ? { delivery: { mode: 'announce', channel: config.reportingChannel } }
+          : {}),
       })
 
       return {

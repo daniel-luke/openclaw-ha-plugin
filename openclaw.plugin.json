@@ -31,10 +31,6 @@
         "type": "string",
         "description": "Path to the ha/ context folder relative to the OpenClaw workspace. Defaults to 'ha/'"
       },
-      "gatewayUrl": {
-        "type": "string",
-        "description": "Override for the OpenClaw gateway URL used to create cron jobs. Defaults to http://127.0.0.1:$OPENCLAW_GATEWAY_PORT"
-      },
       "gatewayToken": {
         "type": "string",
         "description": "Override for the OpenClaw gateway token. Defaults to $OPENCLAW_GATEWAY_TOKEN env var"

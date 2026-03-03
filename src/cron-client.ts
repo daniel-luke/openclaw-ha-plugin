@@ -1,70 +1,114 @@
-import * as http from 'node:http'
-import * as https from 'node:https'
+import { randomUUID } from 'node:crypto'
+import WS from 'ws'
 
 export interface CronAtSchedule {
   kind: 'at'
-  at: string // ISO 8601 datetime
+  at: string // ISO 8601 datetime, e.g. "2026-06-01T23:00:00Z"
 }
 
 export interface CronJob {
-  prompt: string
+  name: string
   schedule: CronAtSchedule
-  label?: string
-  channel?: string
+  sessionTarget: 'isolated'
+  payload: {
+    kind: 'agentTurn'
+    message: string
+  }
+  delivery?: {
+    mode: 'announce' | 'none'
+    channel?: string
+  }
+  deleteAfterRun?: boolean
+  description?: string
 }
 
 export interface CronJobResult {
   id: string
-  label?: string
+  name?: string
 }
 
 /**
- * Creates a cron job via the OpenClaw gateway REST API.
- * Runs over HTTP/1.1 (same reason as ha-client: avoids HTTP/2 issues).
+ * Adds a cron job via the OpenClaw gateway WebSocket RPC protocol.
+ *
+ * Protocol:
+ *   1. Connect to ws://127.0.0.1:<port>
+ *   2. Send connect handshake: { type: "connect", token: "..." }
+ *   3. Wait for acknowledgement from the gateway
+ *   4. Send RPC request:  { type: "req", id: "<uuid>", method: "cron.add", params: <job> }
+ *   5. Receive response:  { type: "res", id: "<uuid>", ok: true, payload: <result> }
  */
 export async function addCronJob(
-  gatewayUrl: string,
+  gatewayPort: number | string,
   gatewayToken: string,
   job: CronJob,
 ): Promise<CronJobResult> {
-  const body = JSON.stringify(job)
-  const url = new URL('/api/cron/add', gatewayUrl)
-  const isHttps = url.protocol === 'https:'
-  const bodyBuffer = Buffer.from(body, 'utf-8')
+  const wsUrl = `ws://127.0.0.1:${gatewayPort}`
 
   return new Promise((resolve, reject) => {
-    const options: http.RequestOptions = {
-      hostname: url.hostname,
-      port: url.port || (isHttps ? 443 : 80),
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': bodyBuffer.byteLength,
-        'Authorization': `Bearer ${gatewayToken}`,
-      },
-    }
+    const ws = new WS(wsUrl)
+    const reqId = randomUUID()
+    let handshakeDone = false
 
-    const req = (isHttps ? https : http).request(options, (res) => {
-      const chunks: Buffer[] = []
-      res.on('data', (chunk: Buffer) => chunks.push(chunk))
-      res.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf-8')
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`Gateway cron API error ${res.statusCode}: ${text}`))
-          return
-        }
-        try {
-          resolve(JSON.parse(text) as CronJobResult)
-        } catch {
-          // Response may be empty or non-JSON on success
-          resolve({ id: 'scheduled' })
-        }
-      })
+    const timeout = setTimeout(() => {
+      ws.close()
+      reject(new Error('Timeout: cron.add did not complete within 10 seconds'))
+    }, 10000)
+
+    ws.on('open', () => {
+      // Step 1: send connect/auth handshake
+      ws.send(JSON.stringify({ type: 'connect', token: gatewayToken }))
     })
 
-    req.on('error', reject)
-    req.write(bodyBuffer)
-    req.end()
+    ws.on('message', (raw: WS.RawData) => {
+      let msg: Record<string, unknown>
+      try {
+        msg = JSON.parse(raw.toString()) as Record<string, unknown>
+      } catch {
+        return // ignore unparseable frames
+      }
+
+      if (!handshakeDone) {
+        // Any message back after the connect handshake means we're authenticated.
+        // If the gateway rejects the token it will close the connection instead.
+        handshakeDone = true
+        ws.send(
+          JSON.stringify({
+            type: 'req',
+            id: reqId,
+            method: 'cron.add',
+            params: job,
+          }),
+        )
+        return
+      }
+
+      // Wait for the response matching our request id
+      if (msg.id === reqId) {
+        clearTimeout(timeout)
+        ws.close()
+        if (msg.ok) {
+          resolve((msg.payload as CronJobResult) ?? { id: 'scheduled' })
+        } else {
+          reject(new Error(`cron.add failed: ${JSON.stringify(msg.error)}`))
+        }
+      }
+    })
+
+    ws.on('error', (err) => {
+      clearTimeout(timeout)
+      reject(new Error(`Gateway WebSocket error: ${err.message}`))
+    })
+
+    ws.on('close', (code, reason) => {
+      if (!handshakeDone) {
+        clearTimeout(timeout)
+        reject(
+          new Error(
+            `Gateway closed connection before handshake (code ${code}: ${reason}). ` +
+            'Check that OPENCLAW_GATEWAY_TOKEN is correct.',
+          ),
+        )
+      }
+    })
   })
 }
