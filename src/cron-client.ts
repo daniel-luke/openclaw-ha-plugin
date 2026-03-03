@@ -32,10 +32,10 @@ export interface CronJobResult {
  *
  * Protocol:
  *   1. Connect to ws://127.0.0.1:<port>
- *   2. Send connect handshake: { type: "connect", token: "..." }
+ *   2. Send connect frame (auth):  { type: "connect", token: "..." }
  *   3. Wait for acknowledgement from the gateway
- *   4. Send RPC request:  { type: "req", id: "<uuid>", method: "cron.add", params: <job> }
- *   5. Receive response:  { type: "res", id: "<uuid>", ok: true, payload: <result> }
+ *   4. Send RPC request:           { type: "req", id: "<uuid>", method: "cron.add", params: <job> }
+ *   5. Receive response:           { type: "res", id: "<uuid>", ok: true, payload: <result> }
  */
 export async function addCronJob(
   gatewayPort: number | string,
@@ -45,13 +45,7 @@ export async function addCronJob(
   const wsUrl = `ws://127.0.0.1:${gatewayPort}`
 
   return new Promise((resolve, reject) => {
-    // Pass the token in the HTTP upgrade headers — the gateway authenticates
-    // at the WebSocket handshake level, not via a post-connect message.
-    const ws = new WS(wsUrl, {
-      headers: {
-        Authorization: `Bearer ${gatewayToken}`,
-      },
-    })
+    const ws = new WS(wsUrl)
     const reqId = randomUUID()
     let requestSent = false
 
@@ -61,8 +55,7 @@ export async function addCronJob(
     }, 10000)
 
     ws.on('open', () => {
-      // Step 1: protocol requires a connect frame as the very first message,
-      // even though the token was already validated via the Authorization header.
+      // Step 1: authenticate via the connect frame — this is the only required auth step.
       ws.send(JSON.stringify({ type: 'connect', token: gatewayToken }))
     })
 
