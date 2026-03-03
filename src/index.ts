@@ -49,7 +49,14 @@ export default function register(api: any): void {
   api.registerService?.({
     id: 'ha-device-registry',
     async start() {
-      const config = api.config as PluginConfig
+      // Log the raw config shape to diagnose what OpenClaw actually passes
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = api.config as any
+      api.logger?.info('[ha-plugin] raw api.config: ' + JSON.stringify(raw))
+
+      // OpenClaw may pass the full entry object { enabled, config: {...} }
+      // or just the inner config { haUrl, haToken, ... } — handle both.
+      const config: PluginConfig = raw?.haUrl ? raw : (raw?.config ?? raw)
       state.config = config
       state.haDir = resolveHaDir(config)
       state.haClient = new HAClient(config.haUrl, config.haToken)
