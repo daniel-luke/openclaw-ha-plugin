@@ -9,6 +9,18 @@ export interface HAState {
   last_updated: string
 }
 
+export interface HAArea {
+  area_id: string
+  name: string
+}
+
+export interface HAEntityRegistryEntry {
+  entity_id: string
+  area_id: string | null
+  name: string | null          // user-defined override name
+  original_name: string | null // name from the integration
+}
+
 export class HAClient {
   constructor(
     private readonly baseUrl: string,
@@ -32,6 +44,22 @@ export class HAClient {
     }
     const data = (await res.json()) as HAState | HAState[]
     return entityId ? [data as HAState] : (data as HAState[])
+  }
+
+  async getAreas(): Promise<HAArea[]> {
+    const res = await fetch(`${this.baseUrl}/api/config/area_registry/list`, {
+      headers: this.headers(),
+    })
+    if (!res.ok) return []
+    return res.json() as Promise<HAArea[]>
+  }
+
+  async getEntityRegistry(): Promise<HAEntityRegistryEntry[]> {
+    const res = await fetch(`${this.baseUrl}/api/config/entity_registry/list`, {
+      headers: this.headers(),
+    })
+    if (!res.ok) return []
+    return res.json() as Promise<HAEntityRegistryEntry[]>
   }
 
   async callService(
