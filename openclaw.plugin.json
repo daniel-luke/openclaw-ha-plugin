@@ -1,0 +1,57 @@
+{
+  "id": "ha",
+  "name": "Home Assistant",
+  "description": "Control Home Assistant devices, schedule future actions, and receive notifications via a configurable channel.",
+  "version": "0.1.0",
+  "kind": "integration",
+  "skills": ["./skills"],
+  "configSchema": {
+    "type": "object",
+    "required": ["haUrl", "haToken"],
+    "additionalProperties": false,
+    "properties": {
+      "haUrl": {
+        "type": "string",
+        "description": "Base URL of your Home Assistant instance"
+      },
+      "haToken": {
+        "type": "string",
+        "description": "Long-lived access token from your Home Assistant profile"
+      },
+      "reportingChannel": {
+        "type": "string",
+        "description": "OpenClaw channel ID to send action confirmations to (e.g. 'telegram')"
+      },
+      "reportingEnabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Send confirmation messages after device actions"
+      },
+      "workspaceHaDir": {
+        "type": "string",
+        "description": "Path to the ha/ context folder relative to the OpenClaw workspace. Defaults to 'ha/'"
+      }
+    }
+  },
+  "uiHints": {
+    "haUrl": {
+      "label": "Home Assistant URL",
+      "placeholder": "http://homeassistant.local:8123"
+    },
+    "haToken": {
+      "label": "Long-lived Access Token",
+      "sensitive": true
+    },
+    "reportingChannel": {
+      "label": "Notification Channel ID",
+      "placeholder": "telegram"
+    },
+    "reportingEnabled": {
+      "label": "Report after actions"
+    },
+    "workspaceHaDir": {
+      "label": "Workspace HA directory",
+      "placeholder": "ha/"
+    }
+  }
+}
